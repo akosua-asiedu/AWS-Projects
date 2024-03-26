@@ -1,0 +1,83 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  This template provisions an EC2 instance in the public subnet of the VPC previously provisioned by the younique-vpc stack in this AWS Account.
+
+# This template creates:
+#   Instance security group
+#   A single EC2 instance serving users of the YOU-Nique Web App
+
+### Parameters section ###
+
+Parameters:
+
+  NetworkStackName:
+    Description: >-
+      The active CloudFormation stack containing the networking resources that are referenced in this stack.
+    Type: String
+    MinLength: 1
+    MaxLength: 255
+    AllowedPattern: '^[a-zA-Z][-a-zA-Z0-9]*$'
+    Default: younique-vpc
+
+#### Resources section ###
+
+Resources:
+
+  # EC2 instance
+
+  WebServerInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+        ImageId: ami-080e1f13689e07408
+        InstanceType: t2.micro
+        KeyName: vincee-app-server
+        NetworkInterfaces:
+        - GroupSet:
+            - !Ref WebServerSecurityGroup
+          DeviceIndex: 0
+          DeleteOnTermination: true
+          SubnetId:
+            Fn::ImportValue:
+              !Sub ${NetworkStackName}-SubnetID
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash -xe
+            sudo apt update && sudo apt upgrade -y
+            apt-get install -y apache2
+            sudo chown ubuntu:ubuntu /var/www/html/index.html
+            chmod 644 /var/www/html/index.html
+            echo '<img src="https://you-nique-app.s3.amazonaws.com/You-Nique.png">' > /var/www/html/index.html
+            sudo systemctl start apache2
+        Tags:
+        - Key: Name
+          Value: YOU-Nique-Web-Server
+
+  # Instance Security Group
+
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable HTTP & SSH ingress
+      VpcId:
+        Fn::ImportValue:
+          !Sub ${NetworkStackName}-VPCID
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: YOU-Nique-Server-Security-Group
+
+
+### Outputs section ###
+
+Outputs:
+  URL:
+    Description: URL for the Users visiting YOU-Nique Web App
+    Value: !Sub 'http://${WebServerInstance.PublicDnsName}'
